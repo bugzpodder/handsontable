@@ -1,6 +1,5 @@
 import {
   getStyle,
-  getComputedStyle,
   getTrimmingContainer,
   isVisible,
 } from './../../../../helpers/dom/element';
@@ -43,7 +42,8 @@ class MasterTable extends Table {
       const trimmingOverflow = getStyle(trimmingElement, 'overflow', rootWindow);
       const holderStyle = this.holder.style;
       const { scrollWidth, scrollHeight } = trimmingElement;
-      let { width, height } = trimmingElement.getBoundingClientRect();
+      let width = trimmingElement.offsetWidth;
+      let height = trimmingElement.offsetHeight;
       const overflow = ['auto', 'hidden', 'scroll'];
 
       if (trimmingElementParent && overflow.includes(trimmingOverflow)) {
@@ -63,7 +63,7 @@ class MasterTable extends Table {
           trimmingElementParent.appendChild(cloneNode);
         }
 
-        const cloneHeight = parseInt(getComputedStyle(cloneNode, rootWindow).height, 10);
+        const cloneHeight = parseInt(rootWindow.getComputedStyle(cloneNode).height, 10);
 
         trimmingElementParent.removeChild(cloneNode);
 

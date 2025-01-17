@@ -12,8 +12,8 @@ import {
   displayErrorMessage,
   displayWarningMessage
 } from '../../scripts/utils/index.mjs';
-import examplesPackageJson from '../package.json' assert { type: 'json' };
-import mainPackageJson from '../../package.json' assert { type: 'json' };
+import examplesPackageJson from '../package.json' with { type: 'json' };
+import mainPackageJson from '../../package.json' with { type: 'json' };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const exampleFrameworkSubdirs = examplesPackageJson.internal.framework_dirs;
@@ -25,6 +25,7 @@ const isPackageRequired = (packageName, packageLocation) => {
   return (
     // If the required package is handsontable
     packageName === 'handsontable' ||
+    packageLocation.includes(frameworkName) ||
     // If the required package is @handsontable/angular
     (frameworkName === 'angular' && packageName === '@handsontable/angular' && !isLegacyAngularExample) ||
     // If it's in the framework directory
@@ -76,7 +77,7 @@ for (const hotPackageGlob of hotWorkspaces) {
   const mainPackages = glob.sync(`../${hotPackageGlob}`);
 
   for (const mainPackageUrl of mainPackages) {
-    const { default: packagePackageJson } = await import(`../${mainPackageUrl}/package.json`, { assert: { type: 'json' } });
+    const { default: packagePackageJson } = await import(`../${mainPackageUrl}/package.json`, { with: { type: 'json' } });
     const packageName = packagePackageJson.name;
     packagesToLink.push(packageName);
   }
@@ -86,11 +87,11 @@ exampleFrameworkSubdirs.forEach((packagesLocation) => {
   const subdirs = glob.sync(`./${packagesLocation}`);
 
   subdirs.forEach((packageLocation) => {
-    const frameworkName = packageLocation.split('/').pop();
+    const frameworkLocationName = packageLocation.split('/').pop();
 
     if (
       packageLocation.startsWith(`./${argv.examplesVersion}`) &&
-      ((argv.framework && argv.framework.includes(frameworkName)) ||
+      ((argv.framework && argv.framework.includes(frameworkLocationName)) ||
       !argv.framework)
     ) {
 
@@ -106,7 +107,7 @@ exampleFrameworkSubdirs.forEach((packagesLocation) => {
       }
 
       // Additional linking to all the examples for Angular (required to load css files from `angular.json`)
-      if (/^angular(-\d+)?$/.test(frameworkName)) {
+      if (/^angular(-(\d+|next))?$/.test(frameworkLocationName)) {
         const angularPackageJson = fse.readJSONSync(`${packageLocation}/package.json`);
         const workspacesList = angularPackageJson?.workspaces.packages || angularPackageJson?.workspaces;
 

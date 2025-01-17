@@ -1,63 +1,65 @@
-import { addClass, outerHeight } from './../helpers/dom/element';
+import { addClass } from './../helpers/dom/element';
 import { arrayEach } from './../helpers/array';
 
 /**
  * @class GhostTable
  */
 class GhostTable {
+  /**
+   * Handsontable instance.
+   *
+   * @type {Core}
+   */
+  hot = null;
+  /**
+   * Container element where every table will be injected.
+   *
+   * @type {HTMLElement|null}
+   */
+  container = null;
+  /**
+   * Flag which determine is table was injected to DOM.
+   *
+   * @type {boolean}
+   */
+  injected = false;
+  /**
+   * Added rows collection.
+   *
+   * @type {Array}
+   */
+  rows = [];
+  /**
+   * Added columns collection.
+   *
+   * @type {Array}
+   */
+  columns = [];
+  /**
+   * Samples prepared for calculations.
+   *
+   * @type {Map}
+   * @default {null}
+   */
+  samples = null;
+  /**
+   * Ghost table settings.
+   *
+   * @type {object}
+   * @default {Object}
+   */
+  settings = {
+    useHeaders: true
+  };
+
   constructor(hotInstance) {
-    /**
-     * Handsontable instance.
-     *
-     * @type {Core}
-     */
     this.hot = hotInstance;
-    /**
-     * Container element where every table will be injected.
-     *
-     * @type {HTMLElement|null}
-     */
-    this.container = null;
-    /**
-     * Flag which determine is table was injected to DOM.
-     *
-     * @type {boolean}
-     */
-    this.injected = false;
-    /**
-     * Added rows collection.
-     *
-     * @type {Array}
-     */
-    this.rows = [];
-    /**
-     * Added columns collection.
-     *
-     * @type {Array}
-     */
-    this.columns = [];
-    /**
-     * Samples prepared for calculations.
-     *
-     * @type {Map}
-     * @default {null}
-     */
-    this.samples = null;
-    /**
-     * Ghost table settings.
-     *
-     * @type {object}
-     * @default {Object}
-     */
-    this.settings = {
-      useHeaders: true
-    };
   }
 
   /**
    * Add row.
    *
-   * @param {number} row Row index.
+   * @param {number} row Visual row index.
    * @param {Map} samples Samples Map object.
    */
   addRow(row, samples) {
@@ -73,7 +75,7 @@ class GhostTable {
 
     this.samples = samples;
     this.table = this.createTable(this.hot.table.className);
-    this.table.colGroup.appendChild(this.createColGroupsCol());
+    this.table.colGroup.appendChild(this.createColGroupsCol(row));
     this.table.tr.appendChild(this.createRow(row));
     this.container.container.appendChild(this.table.fragment);
 
@@ -88,7 +90,7 @@ class GhostTable {
   addColumnHeadersRow(samples) {
     const colHeader = this.hot.getColHeader(0);
 
-    if (colHeader !== null && colHeader !== void 0) {
+    if (colHeader !== null && colHeader !== undefined) {
       const rowObject = { row: -1 };
 
       this.rows.push(rowObject);
@@ -110,7 +112,7 @@ class GhostTable {
   /**
    * Add column.
    *
-   * @param {number} column Column index.
+   * @param {number} column Visual column index.
    * @param {Map} samples A map with sampled table values.
    */
   addColumn(column, samples) {
@@ -130,7 +132,7 @@ class GhostTable {
     if (this.getSetting('useHeaders') && this.hot.getColHeader(column) !== null) {
       // Please keep in mind that the renderable column index equal to the visual columns index for the GhostTable.
       // We render all columns.
-      this.hot.view.appendColHeader(column, this.table.th);
+      this.hot.view.appendColHeader(column, this.table.th, undefined, -1);
     }
     this.table.tBody.appendChild(this.createCol(column));
     this.container.container.appendChild(this.table.fragment);
@@ -147,9 +149,14 @@ class GhostTable {
     if (!this.injected) {
       this.injectTable();
     }
+
     arrayEach(this.rows, (row) => {
-      // -1 <- reduce border-top from table
-      callback(row.row, outerHeight(row.table) - 1);
+      // In cases when the cell's content produces the height with a decimal point, the height
+      // needs to be rounded up to make sure that there will be a space for the cell's content.
+      // The `.offsetHeight` always returns the rounded number (floored), so it's not suitable for this case.
+      const { height } = row.table.getBoundingClientRect();
+
+      callback(row.row, Math.ceil(height));
     });
   }
 
@@ -163,14 +170,9 @@ class GhostTable {
       this.injectTable();
     }
     arrayEach(this.columns, (column) => {
-      // The GhostTable class is responsible for calculating the columns' width based on the
-      // contents rendered in the cells. In some cases, when the column's width calculated by
-      // the browser is a decimal point with a fractional component. For example, 35.32px.
-      // The usage of the `.offsetWidth` (or our helper `outerWidth`) is incorrect.
-      // The `outerWidth` in the mentioned example (35.32px) would return 35 pixels that
-      // would cause the text to not fit in the cell, thus increasing the row height.
-      // That's why the `getBoundingClientRect` method is used. The method returns the number
-      // that is rounded up to make sure that there will be a space for the cell's content.
+      // In cases when the cell's content produces the width with a decimal point, the width
+      // needs to be rounded up to make sure that there will be a space for the cell's content.
+      // The `.offsetWidth` always returns the rounded number (floored), so it's not suitable for this case.
       const { width } = column.table.getBoundingClientRect();
 
       callback(column.col, Math.ceil(width));
@@ -227,18 +229,19 @@ class GhostTable {
   /**
    * Create colgroup col elements.
    *
+   * @param {number} row Visual row index.
    * @returns {DocumentFragment}
    */
-  createColGroupsCol() {
+  createColGroupsCol(row) {
     const fragment = this.hot.rootDocument.createDocumentFragment();
 
     if (this.hot.hasRowHeaders()) {
-      fragment.appendChild(this.createColElement(-1));
+      fragment.appendChild(this.createColElement(-1, -1));
     }
 
     this.samples.forEach((sample) => {
       arrayEach(sample.strings, (string) => {
-        fragment.appendChild(this.createColElement(string.col));
+        fragment.appendChild(this.createColElement(string.col, row));
       });
     });
 
@@ -248,7 +251,7 @@ class GhostTable {
   /**
    * Create table row element.
    *
-   * @param {number} row Row index.
+   * @param {number} row Visual row index.
    * @returns {DocumentFragment} Returns created table row elements.
    */
   createRow(row) {
@@ -266,10 +269,6 @@ class GhostTable {
       arrayEach(sample.strings, (string) => {
         const column = string.col;
         const cellProperties = this.hot.getCellMeta(row, column);
-
-        cellProperties.col = column;
-        cellProperties.row = row;
-
         const renderer = this.hot.getCellRenderer(cellProperties);
         const td = rootDocument.createElement('td');
 
@@ -323,7 +322,7 @@ class GhostTable {
   /**
    * Create table column elements.
    *
-   * @param {number} column Column index.
+   * @param {number} column Visual column index.
    * @returns {DocumentFragment} Returns created column table column elements.
    */
   createCol(column) {
@@ -334,10 +333,6 @@ class GhostTable {
       arrayEach(sample.strings, (string) => {
         const row = string.row;
         const cellProperties = this.hot.getCellMeta(row, column);
-
-        cellProperties.col = column;
-        cellProperties.row = row;
-
         const renderer = this.hot.getCellRenderer(cellProperties);
         const td = rootDocument.createElement('td');
         const tr = rootDocument.createElement('tr');
@@ -359,7 +354,7 @@ class GhostTable {
    */
   clean() {
     this.rows.length = 0;
-    this.rows[-1] = void 0;
+    this.rows[-1] = undefined;
     this.columns.length = 0;
 
     if (this.samples) {
@@ -395,13 +390,27 @@ class GhostTable {
   /**
    * Create col element.
    *
-   * @param {number} column Column index.
+   * @param {number} column Visual column index.
+   * @param {number} row Visual row index.
    * @returns {HTMLElement}
    */
-  createColElement(column) {
+  createColElement(column, row) {
     const col = this.hot.rootDocument.createElement('col');
+    let colspan = 0;
 
-    col.style.width = `${this.hot.view._wt.wtTable.getStretchedColumnWidth(column)}px`;
+    if (row >= 0 && column >= 0) {
+      colspan = this.hot.getCellMeta(row, column).colspan;
+    }
+
+    let width = this.hot.getColWidth(column);
+
+    if (colspan > 1) {
+      for (let nextColumn = column + 1; nextColumn < column + colspan; nextColumn++) {
+        width += this.hot.getColWidth(nextColumn);
+      }
+    }
+
+    col.style.width = `${width}px`;
 
     return col;
   }

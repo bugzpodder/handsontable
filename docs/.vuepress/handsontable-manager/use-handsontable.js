@@ -1,4 +1,5 @@
 const { register } = require('./register');
+const { themeManager } = require('./theme-manager');
 const {
   buildDependencyGetter,
   presetMap,
@@ -6,10 +7,23 @@ const {
 
 const ATTR_VERSION = 'data-hot-version';
 
+class AbortError extends Error {}
+
 const useHandsontable = (version, callback = () => {}, preset = 'hot', buildMode = 'production') => {
   const getDependency = buildDependencyGetter(version, buildMode);
+  const abortSignal = register.getAbortSignal();
 
-  const loadDependency = dep => new Promise((resolve) => {
+  const loadDependency = dep => new Promise((resolve, reject) => {
+    const abortHandler = () => {
+      reject(new AbortError());
+    };
+
+    if (abortSignal.aborted) {
+      reject(abortHandler());
+    }
+
+    abortSignal.addEventListener('abort', abortHandler);
+
     const getId = depName => `dependency-reloader_${depName}`;
     const [jsUrl, dependentVars = [], cssUrl = undefined, globalVarSharedDependency] = getDependency(dep);
     const id = getId(dep);
@@ -52,7 +66,15 @@ const useHandsontable = (version, callback = () => {}, preset = 'hot', buildMode
 
       _document.head.appendChild(script);
 
-      if (cssUrl) {
+      if (Array.isArray(cssUrl)) {
+        cssUrl.forEach((cssUrlItem, index) => {
+          _document.head.insertAdjacentHTML(
+            'beforeend',
+            // eslint-disable-next-line max-len
+            `<link type="text/css" data-hot-version="${version}" rel="stylesheet" id="css-${id}-${index}" href="${cssUrlItem}"/>`
+          );
+        });
+      } else if (cssUrl) {
         _document.head.insertAdjacentHTML(
           'beforeend',
           `<link type="text/css" data-hot-version="${version}" rel="stylesheet" id="css-${id}" href="${cssUrl}"/>`
@@ -63,16 +85,19 @@ const useHandsontable = (version, callback = () => {}, preset = 'hot', buildMode
     // execute callback
     if (script.loaded) {
       setTimeout(() => {
+        abortSignal.removeEventListener('abort', abortHandler);
         register.listen();
+        themeManager.ensureCorrectHotThemes();
         resolve();
       });
     } else {
       script.addEventListener('load', () => {
+        abortSignal.removeEventListener('abort', abortHandler);
         register.listen();
+        themeManager.ensureCorrectHotThemes();
         resolve();
       });
     }
-
   });
 
   const loadPreset = async() => {
@@ -81,12 +106,22 @@ const useHandsontable = (version, callback = () => {}, preset = 'hot', buildMode
     for (let i = 0; i < dependencies.length; i++) {
       const dep = dependencies[i];
 
+      if (abortSignal.aborted) {
+        break;
+      }
+
       // The order of loading is really important. For that purpose await was used.
       await loadDependency(dep); // eslint-disable-line no-await-in-loop
     }
   };
 
-  loadPreset().then(callback);
+  loadPreset()
+    .then(callback)
+    .catch((err) => {
+      if (!(err instanceof AbortError)) {
+        throw err;
+      }
+    });
 };
 
 module.exports = { useHandsontable };
